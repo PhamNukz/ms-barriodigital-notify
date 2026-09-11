@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: ms-barriodigital-notify
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # reintentos locales antes de dejar que el dead-lettering de la cola actue;
+        # ademas de esto, RabbitMQ reenvia a la DLQ si el listener lanza excepcion.
+        retry:
+          enabled: true
+          max-attempts: 3
