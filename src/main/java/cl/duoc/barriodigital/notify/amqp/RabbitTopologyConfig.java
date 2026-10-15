@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+
 /**
  * Topologia de la seccion 8 del caso: 2 exchanges de comando + 1 de dead-letter,
  * 3 colas principales con su DLQ, cada una alcanzable por binding direct y topic.
