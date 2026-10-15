@@ -23,7 +23,7 @@ public class CommandListener {
         this.guard = guard;
     }
 
-    @RabbitListener(queues = "q.cmd.email")
+    @RabbitListener(queues = "${barriodigital.rabbitmq.colas.email}")
     public void email(CommandEnvelope cmd) {
         if (!guard.esNuevo(cmd.eventId())) {
             log.info("email.send duplicado, se ignora (eventId={})", cmd.eventId());
@@ -33,7 +33,7 @@ public class CommandListener {
                 cmd.data().get("tramiteId"), cmd.data().get("tipoNotificacion"));
     }
 
-    @RabbitListener(queues = "q.cmd.crew")
+    @RabbitListener(queues = "${barriodigital.rabbitmq.colas.crew}")
     public void crew(CommandEnvelope cmd) {
         if (!guard.esNuevo(cmd.eventId())) {
             log.info("crew.ticket duplicado, se ignora (eventId={})", cmd.eventId());
@@ -43,7 +43,7 @@ public class CommandListener {
                 cmd.data().get("tramiteId"), cmd.data().get("direccion"));
     }
 
-    @RabbitListener(queues = "q.cmd.certificate")
+    @RabbitListener(queues = "${barriodigital.rabbitmq.colas.certificate}")
     public void certificate(CommandEnvelope cmd) {
         if (!guard.esNuevo(cmd.eventId())) {
             log.info("certificate.gen duplicado, se ignora (eventId={})", cmd.eventId());
