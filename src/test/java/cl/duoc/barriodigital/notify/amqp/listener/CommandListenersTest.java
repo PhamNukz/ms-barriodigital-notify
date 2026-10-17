@@ -1,55 +1,74 @@
 package cl.duoc.barriodigital.notify.amqp.listener;
 
+import cl.duoc.barriodigital.notify.amqp.AckManual;
 import cl.duoc.barriodigital.notify.amqp.CommandEnvelope;
 import cl.duoc.barriodigital.notify.amqp.ProcessedEventsGuard;
+import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 /**
- * No levanta RabbitMQ: llama a los metodos @RabbitListener directamente para
- * verificar la logica de negocio (idempotencia) de cada listener por dominio. La
- * topologia y el ACK/NACK real solo se pueden probar contra un broker de verdad.
+ * Cada listener por dominio: comando valido -> ACK, payload incompleto -> NACK a la DLQ,
+ * duplicado -> ACK. Sin RabbitMQ: llama a los metodos @RabbitListener con un Channel mockeado.
+ * La topologia y el ACK real solo se prueban contra un broker.
  */
 class CommandListenersTest {
 
-    private CommandEnvelope envelope(String tipo, String eventId, Map<String, Object> data) {
+    private final AckManual ack = new AckManual(new ProcessedEventsGuard(), 3);
+    private final Channel channel = mock(Channel.class);
+
+    private CommandEnvelope cmd(String tipo, String eventId, Map<String, Object> data) {
         return new CommandEnvelope(tipo, eventId, Instant.now(), "trace-1", "corr-1", data);
     }
 
     @Test
-    void email_procesa_un_evento_nuevo_y_descarta_el_duplicado() {
-        var guard = new ProcessedEventsGuard();
-        var listener = new EmailCommandListener(guard);
-        var cmd = envelope("email.send", "evt-email", Map.of("tramiteId", 10L, "tipoNotificacion", "ADMITIDO"));
+    void email_valido_hace_ack_y_duplicado_tambien() throws IOException {
+        var listener = new EmailCommandListener(ack);
+        var c = cmd("email.send", "evt-email", Map.of("tramiteId", 10L, "tipoNotificacion", "ADMITIDO"));
 
-        listener.email(cmd);
-        assertThat(guard.esNuevo("evt-email")).isFalse(); // ya quedo marcado
-        listener.email(cmd); // duplicado: no lanza error
+        listener.email(c, channel, 1L, null, "q.cmd.email");
+        listener.email(c, channel, 2L, null, "q.cmd.email");
+
+        verify(channel).basicAck(1L, false);
+        verify(channel).basicAck(2L, false);
     }
 
     @Test
-    void crew_procesa_un_evento_nuevo_y_descarta_el_duplicado() {
-        var guard = new ProcessedEventsGuard();
-        var listener = new CrewCommandListener(guard);
-        var cmd = envelope("crew.ticket", "evt-crew", Map.of("tramiteId", 11L, "direccion", "Calle 1"));
+    void email_sin_tipoNotificacion_va_a_la_dlq() throws IOException {
+        new EmailCommandListener(ack).email(
+                cmd("email.send", "evt-1", Map.of("tramiteId", 10L)), channel, 3L, null, "q.cmd.email");
 
-        listener.crew(cmd);
-        assertThat(guard.esNuevo("evt-crew")).isFalse();
-        listener.crew(cmd);
+        verify(channel).basicNack(3L, false, false);
     }
 
     @Test
-    void certificate_procesa_un_evento_nuevo_y_descarta_el_duplicado() {
-        var guard = new ProcessedEventsGuard();
-        var listener = new CertificateCommandListener(guard);
-        var cmd = envelope("certificate.gen", "evt-cert", Map.of("tramiteId", 12L, "motivo", "RESUELTO"));
+    void crew_valido_hace_ack_y_sin_tramiteId_va_a_la_dlq() throws IOException {
+        var listener = new CrewCommandListener(ack);
 
-        listener.certificate(cmd);
-        assertThat(guard.esNuevo("evt-cert")).isFalse();
-        listener.certificate(cmd);
+        listener.crew(cmd("crew.ticket", "evt-crew", Map.of("tramiteId", 11L, "direccion", "Calle 1")),
+                channel, 4L, null, "q.cmd.crew");
+        listener.crew(cmd("crew.ticket", "evt-crew2", Map.of("direccion", "Calle 1")),
+                channel, 5L, null, "q.cmd.crew");
+
+        verify(channel).basicAck(4L, false);
+        verify(channel).basicNack(5L, false, false);
+    }
+
+    @Test
+    void certificate_valido_hace_ack_y_sin_motivo_va_a_la_dlq() throws IOException {
+        var listener = new CertificateCommandListener(ack);
+
+        listener.certificate(cmd("certificate.gen", "evt-cert", Map.of("tramiteId", 12L, "motivo", "RESUELTO")),
+                channel, 6L, null, "q.cmd.certificate");
+        listener.certificate(cmd("certificate.gen", "evt-cert2", Map.of("tramiteId", 12L)),
+                channel, 7L, null, "q.cmd.certificate");
+
+        verify(channel).basicAck(6L, false);
+        verify(channel).basicNack(7L, false, false);
     }
 }
