@@ -17,4 +17,9 @@ public class ProcessedEventsGuard {
     public boolean esNuevo(String eventId) {
         return vistos.add(eventId);
     }
+
+    /** Desmarca el evento: se usa al devolverlo a la cola para que su reintento no se tome por duplicado. */
+    public void liberar(String eventId) {
+        vistos.remove(eventId);
+    }
 }
