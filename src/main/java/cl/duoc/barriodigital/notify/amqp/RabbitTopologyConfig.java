@@ -17,6 +17,19 @@ import org.springframework.context.annotation.Configuration;
  * arranque antes que este consumidor).
  * Todas las colas son quorum: replican los mensajes entre nodos, pero con 2 nodos
  * la mayoria Raft es 2, asi que NO toleran la caida de un nodo (haria falta un tercero).
+ *
+ * <p>Rutas (los nombres reales estan en application.yml; aqui van con su valor por defecto):
+ * <pre>
+ *  productor (requests)                        exchange      binding          cola
+ *  notificarEmail     ADMITIDO, VISITA_AGENDADA cmd.direct    email.send    -> q.cmd.email
+ *  difundirResuelto   RESUELTO                  cmd.topic     email.*       -> q.cmd.email
+ *  notificarCuadrilla (sin uso desde E1)        cmd.direct    crew.ticket   -> q.cmd.crew
+ *  difundirVisitaAgendada EN_TERRENO            cmd.topic     crew.#        -> q.cmd.crew
+ *  generarCertificado creacion, RESUELTO        cmd.direct    certificate.gen -> q.cmd.certificate
+ *  (sin productor: extension)                   cmd.topic     certificate.* -> q.cmd.certificate
+ *  rechazo (basicNack requeue=false) de q.cmd.X cmd.dead.dlx  X.dlq         -> q.cmd.X.dlq
+ * </pre>
+ * En topic, '*' reemplaza exactamente una palabra y '#' cero o mas.
  */
 @Configuration
 @EnableConfigurationProperties(RabbitProperties.class)
@@ -60,7 +73,7 @@ public class RabbitTopologyConfig {
         return QueueBuilder.durable(nombre).quorum().build();
     }
 
-    // ---- email ----
+    // ---- email: q.cmd.email <- cmd.direct 'email.send' y cmd.topic 'email.*'; rechazos -> cmd.dead.dlx 'email.dlq' -> q.cmd.email.dlq ----
     @Bean
     Queue qCmdEmail() { return cola(p.colas().email(), p.routingKeys().emailDlq()); }
     @Bean
@@ -72,7 +85,7 @@ public class RabbitTopologyConfig {
     @Bean
     Binding bindEmailDlq() { return BindingBuilder.bind(qCmdEmailDlq()).to(cmdDeadLetterExchange()).with(p.routingKeys().emailDlq()); }
 
-    // ---- crew ----
+    // ---- crew: q.cmd.crew <- cmd.direct 'crew.ticket' y cmd.topic 'crew.#'; rechazos -> cmd.dead.dlx 'crew.dlq' -> q.cmd.crew.dlq ----
     @Bean
     Queue qCmdCrew() { return cola(p.colas().crew(), p.routingKeys().crewDlq()); }
     @Bean
@@ -84,7 +97,7 @@ public class RabbitTopologyConfig {
     @Bean
     Binding bindCrewDlq() { return BindingBuilder.bind(qCmdCrewDlq()).to(cmdDeadLetterExchange()).with(p.routingKeys().crewDlq()); }
 
-    // ---- certificate ----
+    // ---- certificate: q.cmd.certificate <- cmd.direct 'certificate.gen' y cmd.topic 'certificate.*'; rechazos -> 'certificate.dlq' ----
     @Bean
     Queue qCmdCertificate() { return cola(p.colas().certificate(), p.routingKeys().certificateDlq()); }
     @Bean

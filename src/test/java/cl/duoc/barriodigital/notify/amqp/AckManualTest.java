@@ -73,6 +73,21 @@ class AckManualTest {
         verify(channel, never()).basicNack(TAG, false, true);
     }
 
+    /** La falla inyectada para la demo recorre la ruta recuperable: requeue y, agotada, DLQ. */
+    @Test
+    void falla_simulada_se_reintenta_y_al_agotarse_va_a_la_dlq() throws IOException {
+        var conFalla = new CommandEnvelope("email.send", "e6", Instant.now(), "t", "c",
+                Map.of("tramiteId", 1L, "tipoNotificacion", "RESUELTO", "simularFalla", true));
+        Runnable accion = () -> {};
+
+        ack.procesar(conFalla, channel, TAG, null, COLA, accion); // 1a entrega
+        verify(channel).basicNack(TAG, false, true);
+
+        ack.procesar(conFalla, channel, TAG, 2L, COLA, accion);   // 3a entrega
+        verify(channel).basicNack(TAG, false, false);
+        verify(channel, never()).basicAck(anyLong(), anyBoolean());
+    }
+
     @Test
     void comando_sin_eventId_va_a_la_dlq() throws IOException {
         ack.procesar(cmd(null), channel, TAG, null, COLA, () -> {});

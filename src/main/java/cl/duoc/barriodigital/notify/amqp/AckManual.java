@@ -18,6 +18,11 @@ import java.io.IOException;
  * </ul>
  * Cada NACK deja un log.error con eventId, cola y motivo. Las entregas se cuentan con el
  * header x-delivery-count que RabbitMQ pone en las colas quorum.
+ *
+ * <p>El caso que no pasa por aqui: un mensaje que ni siquiera se puede convertir a
+ * {@link CommandEnvelope} (JSON roto, sin content_type) falla antes de llegar al listener.
+ * El ConditionalRejectingErrorHandler de Spring lo trata como fatal y lo rechaza sin requeue
+ * (tambien en modo manual), asi que termina igual en la DLQ, con un WARN del contenedor.
  */
 @Component
 public class AckManual {
@@ -42,6 +47,17 @@ public class AckManual {
         }
     }
 
+    /**
+     * ponytail: inyeccion de falla para demostrar en vivo la ruta de reintentos. Los listeners
+     * solo escriben un log, asi que nunca fallan solos; con {@code "simularFalla": true} en el
+     * payload se comportan como un proveedor caido (error recuperable).
+     */
+    private static void simularFallaSiSePide(CommandEnvelope cmd) {
+        if (cmd.data() != null && Boolean.TRUE.equals(cmd.data().get("simularFalla"))) {
+            throw new IllegalStateException("falla simulada del proveedor (simularFalla=true)");
+        }
+    }
+
     public void procesar(CommandEnvelope cmd, Channel channel, long tag, Number entregas,
                          String cola, Runnable accion) throws IOException {
         String eventId = cmd.eventId();
@@ -56,6 +72,7 @@ public class AckManual {
             return;
         }
         try {
+            simularFallaSiSePide(cmd);
             accion.run();
         } catch (ComandoNoRecuperableException e) {
             log.error("NACK->DLQ cola={} eventId={} motivo={}", cola, eventId, e.getMessage());
