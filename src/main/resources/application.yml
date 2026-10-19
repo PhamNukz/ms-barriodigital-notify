@@ -2,20 +2,22 @@ spring:
   application:
     name: ms-barriodigital-notify
   rabbitmq:
-    host: ${RABBITMQ_HOST:localhost}
-    port: ${RABBITMQ_PORT:5672}
+    # failover del cliente (C8): en AWS RABBITMQ_ADDRESSES=10.0.1.254:5672,10.0.1.254:5673 (nodo 1 y 2).
+    # Sin esa variable cae a host:port, asi que local no cambia.
+    addresses: ${RABBITMQ_ADDRESSES:${RABBITMQ_HOST:localhost}:${RABBITMQ_PORT:5672}}
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
     listener:
       simple:
-        # reintentos locales antes de dejar que el dead-lettering de la cola actue;
-        # ademas de esto, RabbitMQ reenvia a la DLQ si el listener lanza excepcion.
-        retry:
-          enabled: true
-          max-attempts: 3
+        # ACK manual (ver AckManual): cada listener decide ack / nack-requeue / nack-DLQ.
+        # Sin requeue por defecto: un rechazo no declarado va a la DLQ, nunca en bucle.
+        acknowledge-mode: manual
+        default-requeue-rejected: false
 
 barriodigital:
   rabbitmq:
+    # entregas maximas de un comando con error recuperable antes de mandarlo a la DLQ
+    max-intentos: 3
     exchanges:
       direct: cmd.direct
       topic: cmd.topic
