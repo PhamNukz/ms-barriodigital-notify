@@ -13,8 +13,20 @@ spring:
         # Sin requeue por defecto: un rechazo no declarado va a la DLQ, nunca en bucle.
         acknowledge-mode: manual
         default-requeue-rejected: false
+  # SMTP opcional. Sin MAIL_HOST el correo queda solo en el log, como siempre (el bean se crea
+  # igual con host vacio, pero EmailCommandListener no lo usa). Credenciales solo por entorno.
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
 
 barriodigital:
+  mail:
+    from: ${MAIL_FROM:no-reply@barriodigital.cl}
   rabbitmq:
     # entregas maximas de un comando con error recuperable antes de mandarlo a la DLQ
     max-intentos: 3
