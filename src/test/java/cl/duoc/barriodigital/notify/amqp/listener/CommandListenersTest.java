@@ -5,11 +5,17 @@ import cl.duoc.barriodigital.notify.amqp.CommandEnvelope;
 import cl.duoc.barriodigital.notify.amqp.ProcessedEventsGuard;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 /**
@@ -36,6 +42,52 @@ class CommandListenersTest {
 
         verify(channel).basicAck(1L, false);
         verify(channel).basicAck(2L, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private EmailCommandListener conSmtp(String host, JavaMailSender smtp) {
+        ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(smtp);
+        return new EmailCommandListener(ack, provider, host, "no-reply@barriodigital.cl");
+    }
+
+    private static Map<String, Object> rechazo() {
+        return Map.of("tramiteId", 13L, "tipoNotificacion", "RECHAZADO",
+                "destinatario", "vecino1@duocuc.cl", "direccion", "Calle 1", "motivo", "Fuera de la comuna");
+    }
+
+    @Test
+    void con_mail_host_envia_el_correo_al_destinatario() throws IOException {
+        JavaMailSender smtp = mock(JavaMailSender.class);
+
+        conSmtp("smtp.test", smtp).email(cmd("email.send", "evt-smtp", rechazo()), channel, 8L, null, "q.cmd.email");
+
+        ArgumentCaptor<SimpleMailMessage> m = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(smtp).send(m.capture());
+        assertArrayEquals(new String[]{"vecino1@duocuc.cl"}, m.getValue().getTo());
+        assertTrue(m.getValue().getText().contains("Motivo: Fuera de la comuna"));
+        verify(channel).basicAck(8L, false);
+    }
+
+    /** Sin MAIL_HOST se comporta como antes: solo log, aunque Spring haya creado el JavaMailSender. */
+    @Test
+    void sin_mail_host_no_envia_y_hace_ack() throws IOException {
+        JavaMailSender smtp = mock(JavaMailSender.class);
+
+        conSmtp("", smtp).email(cmd("email.send", "evt-nosmtp", rechazo()), channel, 9L, null, "q.cmd.email");
+
+        verifyNoInteractions(smtp);
+        verify(channel).basicAck(9L, false);
+    }
+
+    @Test
+    void el_cuerpo_lleva_la_visita_propuesta() {
+        String cuerpo = EmailCommandListener.cuerpo(Map.of("tramiteId", 14L, "tipoNotificacion", "VISITA_PROPUESTA",
+                "direccion", "Calle 1",
+                "visita", Map.of("fecha", "2026-11-26", "franja", "TARDE", "cuadrilla", "Cuadrilla Norte")));
+
+        assertTrue(cuerpo.contains("visita propuesta"));
+        assertTrue(cuerpo.contains("Visita: 2026-11-26, 14:00 a 17:00, Cuadrilla Norte"));
     }
 
     @Test
