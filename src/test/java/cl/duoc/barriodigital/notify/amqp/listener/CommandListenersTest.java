@@ -12,6 +12,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -53,7 +54,8 @@ class CommandListenersTest {
 
     private static Map<String, Object> rechazo() {
         return Map.of("tramiteId", 13L, "tipoNotificacion", "RECHAZADO",
-                "destinatario", "vecino1@duocuc.cl", "direccion", "Calle 1", "motivo", "Fuera de la comuna");
+                "destinatario", "vecino1@duocuc.cl", "direccion", "Calle 1", "motivo", "Fuera de la comuna",
+                "cc", List.of("hija@correo.cl", "hijo@correo.cl"));
     }
 
     @Test
@@ -65,6 +67,7 @@ class CommandListenersTest {
         ArgumentCaptor<SimpleMailMessage> m = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(smtp).send(m.capture());
         assertArrayEquals(new String[]{"vecino1@duocuc.cl"}, m.getValue().getTo());
+        assertArrayEquals(new String[]{"hija@correo.cl", "hijo@correo.cl"}, m.getValue().getCc());
         assertTrue(m.getValue().getText().contains("Motivo: Fuera de la comuna"));
         verify(channel).basicAck(8L, false);
     }
@@ -84,10 +87,12 @@ class CommandListenersTest {
     void el_cuerpo_lleva_la_visita_propuesta() {
         String cuerpo = EmailCommandListener.cuerpo(Map.of("tramiteId", 14L, "tipoNotificacion", "VISITA_PROPUESTA",
                 "direccion", "Calle 1",
-                "visita", Map.of("fecha", "2026-11-26", "franja", "TARDE", "cuadrilla", "Cuadrilla Norte")));
+                "visita", Map.of("fecha", "2026-11-26", "franja", "TARDE", "cuadrilla", "Cuadrilla Norte",
+                        "codigo", "0042")));
 
         assertTrue(cuerpo.contains("visita propuesta"));
         assertTrue(cuerpo.contains("Visita: 2026-11-26, 14:00 a 17:00, Cuadrilla Norte"));
+        assertTrue(cuerpo.contains("Codigo de la visita: 0042"), cuerpo);
     }
 
     @Test

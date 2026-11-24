@@ -37,8 +37,9 @@ public class CrewCommandListener {
                      @Header(AmqpHeaders.CONSUMER_QUEUE) String cola) throws IOException {
         ack.procesar(cmd, channel, tag, entregas, cola, () -> {
             AckManual.exigir(cmd, "tramiteId");
-            log.info("[CUADRILLA] ticket de visita creado para tramite={} direccion={}",
-                    cmd.data().get("tramiteId"), cmd.data().get("direccion"));
+            // codigo: el que el vecino le pide a la cuadrilla en la puerta (null si no hubo visita propuesta).
+            log.info("[CUADRILLA] ticket de visita creado para tramite={} direccion={} codigo={}",
+                    cmd.data().get("tramiteId"), cmd.data().get("direccion"), cmd.data().get("codigo"));
         });
     }
 }
