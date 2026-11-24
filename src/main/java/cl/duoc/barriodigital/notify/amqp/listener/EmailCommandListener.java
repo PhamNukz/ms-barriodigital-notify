@@ -16,6 +16,7 @@ import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -60,10 +61,10 @@ public class EmailCommandListener {
         ack.procesar(cmd, channel, tag, entregas, cola, () -> {
             AckManual.exigir(cmd, "tramiteId", "tipoNotificacion");
             Map<String, Object> d = cmd.data();
-            // destinatario, direccion, visita y motivo son opcionales: los comandos anteriores no los traen.
+            // destinatario, cc, direccion, visita y motivo son opcionales: los comandos anteriores no los traen.
             boolean enviado = enviarSiHaySmtp(d);
-            log.info("[EMAIL/PUSH] tramite={} tipo={} destinatario={} direccion={} visita={} motivo={} smtp={} -> vecino notificado",
-                    d.get("tramiteId"), d.get("tipoNotificacion"), d.get("destinatario"), d.get("direccion"),
+            log.info("[EMAIL/PUSH] tramite={} tipo={} destinatario={} cc={} direccion={} visita={} motivo={} smtp={} -> vecino notificado",
+                    d.get("tramiteId"), d.get("tipoNotificacion"), d.get("destinatario"), d.get("cc"), d.get("direccion"),
                     d.get("visita"), d.get("motivo"), enviado ? "enviado" : "no");
         });
     }
@@ -74,6 +75,10 @@ public class EmailCommandListener {
         SimpleMailMessage m = new SimpleMailMessage();
         m.setFrom(remitente);
         m.setTo(para.toString());
+        // Familiares que el vecino agrego al tramite (maximo 3, los valida requests).
+        if (d.get("cc") instanceof List<?> cc && !cc.isEmpty()) {
+            m.setCc(cc.stream().map(String::valueOf).toArray(String[]::new));
+        }
         m.setSubject("BarrioDigital: tu tramite #" + d.get("tramiteId"));
         m.setText(cuerpo(d));
         smtp.send(m);
@@ -86,6 +91,7 @@ public class EmailCommandListener {
             case "ADMITIDO" -> "fue admitido.";
             case "VISITA_PROPUESTA" -> "tiene una visita propuesta. Confirmala o pide otro horario en BarrioDigital.";
             case "VISITA_AGENDADA" -> "tiene la visita en terreno agendada.";
+            case "VISITA_CONFIRMADA" -> "tiene la visita confirmada.";
             case "EN_CAMINO" -> "tiene a la cuadrilla en camino.";
             case "RESUELTO" -> "fue resuelto.";
             case "RECHAZADO" -> "fue rechazado.";
@@ -99,6 +105,10 @@ public class EmailCommandListener {
             String horas = "TARDE".equals(v.get("franja")) ? "14:00 a 17:00" : "9:00 a 12:00";
             sb.append("\nVisita: ").append(v.get("fecha")).append(", ").append(horas).append(", ").append(v.get("cuadrilla"));
             if (v.get("nota") != null) sb.append("\nNota: ").append(v.get("nota"));
+            if (v.get("codigo") != null) {
+                sb.append("\nCodigo de la visita: ").append(v.get("codigo"))
+                  .append(". Pideselo a la cuadrilla al llegar: si no coincide, no abras.");
+            }
         }
         if (d.get("motivo") != null) sb.append("\nMotivo: ").append(d.get("motivo"));
         return sb.toString();
